@@ -1,14 +1,13 @@
-# WF Name
 
-name: WF Name
+name: Persistent Gatsby deploy to S3 Workflow
 
-# Controls when the action will run. Triggers the workflow on push or pull request on ONLY master branch
+# This workflow recognizes the branch and pushes to the appropriate s3 bucket as defined in your Secrets. The workflow can be scaled almost infinitely
 
 on:
   push:
-    branches: master
+    branches: [ master, staging ] # Add in branches as necessary 
   pull_request:
-    branches: master
+    branches: [ master, staging ] # Add in branches as necessary
 
 # A workflow run is made up of one or more jobs that can run sequentially or in parallel
 jobs:
@@ -24,13 +23,17 @@ jobs:
     - name: Checkout
       uses: actions/checkout@v2
       with:
-        node-version: "14"
+        node-version: "15"
+        
+    - name: Install Gatsby CLI
+      run: sudo npm i --global gatsby-cli
+      
 
     - name: NPM Install
       run: npm install
 
     - name: GATSBY Build
-      run: npm run build
+      run: sudo gatsby clean && sudo gatsby build
 
     - name: zip build result
       run: tar -czvf build.tar.gz public 
@@ -43,11 +46,8 @@ jobs:
   deploy:
     needs: 
       - build
-        
     runs-on: ubuntu-latest
-
-        
-        
+    
     steps:
       - name: download artifact
         uses: actions/download-artifact@v2
@@ -56,13 +56,18 @@ jobs:
       - name: extract build
         run: tar -xzvf build.tar.gz
         
-      - name: Configure AWS credentials
+      - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v1
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: us-east-1
+          aws-region: ${{ REGION.ENV }}
           
-      - name: deploy to s3
-        run: aws s3 sync ./public s3:/bucket name --acl public-read
+      - name: deploy to s3 Production
+        if: github.ref == 'refs/heads/master'
+        run: echo " Deploying to Production " && aws s3 sync ./public s3://${{ PRODUCTION.ENV }} --acl public-read
         
+                  
+      - name: deploy to s3 Staging
+        if: github.ref == 'refs/heads/staging'
+        run: echo " Deploying to Staging " && aws s3 sync ./public s3://${{ STAGING.ENV }} --acl public-read
